@@ -1426,6 +1426,7 @@ func main() {
 	cpuprofile := flag.String("cpuprofile", "", "cpuprofile output")
 	monitor := flag.Bool("monitor", false, "enable serial monitor")
 	baudrate := flag.Int("baudrate", 115200, "baudrate of serial monitor")
+	quiet := flag.Bool("quiet", false, "suppress the rpk deploy command output")
 
 	// Internal flags, that are only intended for TinyGo development.
 	printIR := flag.Bool("internal-printir", false, "print LLVM IR")
@@ -1572,9 +1573,11 @@ func main() {
 
 		err := Build(pkgName, outpath, options)
 		handleCompilerError(err)
-		fmt.Println("build successful")
-		fmt.Println("deploy your transform to a topic:")
-		fmt.Println("\trpk transform deploy")
+		if !*quiet {
+			fmt.Println("build successful")
+			fmt.Println("deploy your transform to a topic:")
+			fmt.Println("\trpk transform deploy")
+		}
 	case "build-library":
 		// Note: this command is only meant to be used while making a release!
 		if outpath == "" {
