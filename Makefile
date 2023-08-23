@@ -844,6 +844,16 @@ endif
 	# ./build/release/tinygo/bin/tinygo build-library -target=cortex-m4     -o build/release/tinygo/pkg/thumbv7em-unknown-unknown-eabi-cortex-m4/picolibc    picolibc
 
 release:
+	strip build/release/tinygo/bin/*
+	# Remove the device drivers that can be massive
+	rm -rf build/release/tinygo/src/device/stm32
+	rm -rf build/release/tinygo/src/device/sam
+	rm -rf build/release/tinygo/src/device/nxp
+	rm -rf build/release/tinygo/src/device/nrf
+	rm -rf build/release/tinygo/src/device/avr
+	rm -rf build/release/tinygo/src/device/avr
+	# Somehow a duplicated source directory can get in here
+	rm -rf build/release/tinygo/src/src
 	tar -czf build/release.tar.gz -C build/release tinygo
 
 DEB_ARCH ?= native

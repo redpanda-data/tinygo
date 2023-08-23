@@ -5,122 +5,110 @@ commands:
     steps:
       - run:
           name: "Pull submodules"
-          command: |
-            git submodule update --init
-            pushd ./lib/binaryen
-            git apply ../../.circleci/binaryen.patch
-            popd
+          command: git submodule update --init
+  llvm-source-linux:
+    steps:
+      - restore_cache:
+          keys:
+            - llvm-source-14-v3
+      - run:
+          name: "Fetch LLVM source"
+          command: make llvm-source
+      - save_cache:
+          key: llvm-source-14-v3
+          paths:
+            - llvm-project/clang/lib/Headers
+            - llvm-project/clang/include
+            - llvm-project/compiler-rt
+            - llvm-project/lld/include
+            - llvm-project/llvm/include
   hack-ninja-jobs:
     steps:
       - run:
           name: "Hack Ninja to use less jobs"
           command: |
-            echo -e '#!/bin/sh\n/usr/bin/ninja -j3 "$@"' > /usr/local/bin/ninja
-            chmod +x /usr/local/bin/ninja
-  build-linux:
+            echo -e '#!/bin/sh\n/usr/bin/ninja -j3 "$@"' > /go/bin/ninja
+            chmod +x /go/bin/ninja
+  build-binaryen-linux:
+    steps:
+      - restore_cache:
+          keys:
+            - binaryen-linux-v2
+      - run:
+          name: "Build Binaryen"
+          command: |
+            make binaryen
+      - save_cache:
+          key: binaryen-linux-v2
+          paths:
+            - build/wasm-opt
+  test-linux:
     parameters:
-      target:
+      llvm:
         type: string
-        default: ""
-      gourl:
-        type: string
-        default: ""
-      zigurl:
-        type: string
-        default: ""
+      fmt-check:
+        type: boolean
+        default: true
     steps:
       - checkout
-      - run:
-          name: "Install dependencies"
-          command: |
-            # install build deps
-            dnf install -y \
-                cmake \
-                git \
-                ninja-build \
-                xz
-            # install latest version of go
-            mkdir -p /usr/local
-            curl -s -L \
-              <<parameters.gourl>> \
-              | tar xz -C /usr/local 
-            echo 'export PATH=$PATH:/usr/local/go/bin' >> "$BASH_ENV"
-            source "$BASH_ENV"
-            # install zig for a hermetic clang toolchain
-            mkdir -p /usr/local/zig
-            curl -s -L \
-              <<parameters.zigurl>> \
-              | tar xJ --strip-components=1 -C /usr/local/zig
-            echo 'export PATH=$PATH:/usr/local/zig' >> "$BASH_ENV"
-            source "$BASH_ENV"
-            # create wrapper scripts for zig compilation
-            echo -e '#!/bin/sh\nexec zig c++ -target <<parameters.target>> "$@"' > /usr/local/bin/zigc++
-            echo -e '#!/bin/sh\nexec zig cc -target <<parameters.target>> "$@"' > /usr/local/bin/zigcc
-            echo -e '#!/bin/sh\nexec zig ranlib "$@"' > /usr/local/bin/ranlib
-            echo -e '#!/bin/sh\nexec zig ar "$@"' > /usr/local/bin/ar
-            chmod +x /usr/local/bin/zigcc \
-              /usr/local/bin/zigc++ \
-              /usr/local/bin/ranlib \
-              /usr/local/bin/ar
-            # export the build variables
-            echo 'export CC=zigcc' >> "$BASH_ENV"
-            echo 'export CXX=zigc++' >> "$BASH_ENV"
-            echo 'export AR=ar' >> "$BASH_ENV"
-            echo 'export RANLIB=ranlib' >> "$BASH_ENV"
-      - run:
-          name: "Verify dependencies"
-          command: |
-            echo "go version installed:"
-            command -v go
-            go version
-            echo "zig version installed:"
-            command -v zig
-            zig version
-            echo "clang version installed:"
-            zig cc --version
-            env
       - submodules
-      - hack-ninja-jobs
-      - run: 
-          name: "Download LLVM"
+      - run:
+          name: "Install apt dependencies"
           command: |
-            make llvm-source
-            pushd ./llvm-project
-            git apply ../.circleci/llvm-lseek64.patch
-            popd
-      - run: 
-          name: "Build LLVM"
-          command: make llvm-build
-      - run: 
-          name: "Build Tinygo"
-          command: make release
+            echo 'deb https://apt.llvm.org/buster/ llvm-toolchain-buster-<<parameters.llvm>> main' > /etc/apt/sources.list.d/llvm.list
+            wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
+            apt-get update
+            apt-get install --no-install-recommends -y \
+                llvm-<<parameters.llvm>>-dev \
+                clang-<<parameters.llvm>> \
+                libclang-<<parameters.llvm>>-dev \
+                lld-<<parameters.llvm>> \
+                cmake \
+                ninja-build
+      - hack-ninja-jobs
+      - build-binaryen-linux
+      - restore_cache:
+          keys:
+            - go-cache-v3-{{ checksum "go.mod" }}-{{ .Environment.CIRCLE_PREVIOUS_BUILD_NUM }}
+            - go-cache-v3-{{ checksum "go.mod" }}
+      - llvm-source-linux
+      - run: go install -tags=llvm<<parameters.llvm>> .
+      - restore_cache:
+          keys:
+            - wasi-libc-sysroot-systemclang-v6
+      - run: make wasi-libc
+      - save_cache:
+          key: wasi-libc-sysroot-systemclang-v6
+          paths:
+            - lib/wasi-libc/sysroot
+      - when:
+          condition: <<parameters.fmt-check>>
+          steps:
+          - run:
+              # Do this before gen-device so that it doesn't check the
+              # formatting of generated files.
+              name: Check Go code formatting
+              command: make fmt-check
+      - run: make gen-device -j4
+      - run: make smoketest XTENSA=0
+      - save_cache:
+          key: go-cache-v3-{{ checksum "go.mod" }}-{{ .Environment.CIRCLE_BUILD_NUM }}
+          paths:
+            - ~/.cache/go-build
+            - /go/pkg/mod
 
 jobs:
-  build-amd64-linux:
+  test-llvm14-go118:
     docker:
-      - image: fedora:38
+      - image: golang:1.18-buster
+    steps:
+      - test-linux:
+          llvm: "14"
     resource_class: large
-    steps:
-      - build-linux:
-          target: "x86_64-linux-musl"
-          gourl: "https://go.dev/dl/go1.21.0.linux-amd64.tar.gz"
-          zigurl: "https://ziglang.org/download/0.11.0/zig-linux-x86_64-0.11.0.tar.xz"
-      - store_artifacts:
-          path: ./build/release.tar.gz
-  build-arm64-linux:
-    docker:
-      - image: fedora:38
-    resource_class: arm.large
-    steps:
-      - build-linux:
-          target: "aarch64-linux-musl"
-          gourl: "https://go.dev/dl/go1.21.0.linux-arm64.tar.gz"
-          zigurl: "https://ziglang.org/download/0.11.0/zig-linux-aarch64-0.11.0.tar.xz"
-      - store_artifacts:
-          path: ./build/release.tar.gz
 
 workflows:
-  build-all:
+  test-all:
     jobs:
-      - build-amd64-linux
-      - build-arm64-linux
+      # This tests our lowest supported versions of Go and LLVM, to make sure at
+      # least the smoke tests still pass.
+      - test-llvm14-go118

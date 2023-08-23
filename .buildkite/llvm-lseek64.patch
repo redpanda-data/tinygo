@@ -1,3 +1,9 @@
+This patch fixes an issue building clang with musl
+
+lseek64 is a macro that aliases lseek on musl, so using the fully qualified symbol
+leads to the macro not being invoked and a missing symbol. CMake doesn't detect this
+however in the configuration phase, so we just do the substitution here.
+
 diff --git a/llvm/lib/Support/raw_ostream.cpp b/llvm/lib/Support/raw_ostream.cpp
 index 651949ad5..6b547a7ac 100644
 --- a/llvm/lib/Support/raw_ostream.cpp
