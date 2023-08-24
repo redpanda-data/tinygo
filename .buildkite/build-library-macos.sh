@@ -4,13 +4,16 @@
 # brew.
 
 # Create our project directory
+BINARYEN_PATCH="$PWD/binaryen.patch"
+LLVM_PATCH="$PWD/llvm-lseek64.patch"
+
 mkdir -p tmp
 cd tmp
 
 brew install \
   cmake \
   ninja \
-  go@1.21
+  go@1.20
 
 # Verify deps installed correctly
 echo "go version installed:"
@@ -18,9 +21,6 @@ command -v go
 go version
 echo "clang version installed:"
 clang --version
-
-BINARYEN_PATCH="$PWD/binaryen.patch"
-LLVM_PATCH="$PWD/llvm-lseek64.patch"
 
 git clone https://github.com/redpanda-data/tinygo.git .
 # Clone submodules

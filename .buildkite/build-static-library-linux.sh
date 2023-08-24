@@ -4,12 +4,12 @@
 # should produce a single tarball that is the build output.
 
 TARGET="x86_64-linux-musl"
-GOURL="https://go.dev/dl/go1.21.0.linux-amd64.tar.gz"
+GOURL="https://go.dev/dl/go1.20.7.linux-amd64.tar.gz"
 ZIGURL="https://ziglang.org/download/0.11.0/zig-linux-x86_64-0.11.0.tar.xz"
 
 # These same values for linux aarch64
 # target: "aarch64-linux-musl"
-# gourl: "https://go.dev/dl/go1.21.0.linux-arm64.tar.gz"
+# gourl: "https://go.dev/dl/go1.20.7.linux-arm64.tar.gz"
 # zigurl: "https://ziglang.org/download/0.11.0/zig-linux-aarch64-0.11.0.tar.xz"
 
 # Create our project directory
