@@ -22,6 +22,7 @@ dnf install -y \
     git \
     ninja-build \
     which \
+    binutils \
     xz
 
 # install latest version of go
